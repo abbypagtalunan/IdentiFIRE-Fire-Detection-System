@@ -1,5 +1,6 @@
-import { AlertTriangle, CheckCircle, Flame, RotateCcw, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Flame, RotateCcw, Clock,  BellOff } from 'lucide-react';
 import { DetectionResult } from './api';
+import { stopAlarm } from './api';
 
 interface DetectionResultsProps {
   result: DetectionResult;
@@ -114,7 +115,32 @@ export function DetectionResults({ result, onReset, showResetButton = true }: De
                 </p>
               </div>
             </div>
-          </div>
+            <button
+              onClick={async () => await stopAlarm()}
+              className="
+                mt-4 w-full
+                p-4
+                flex items-center justify-center gap-3
+
+                border-2 border-red-500
+                bg-red-600/40
+                rounded-lg
+
+                text-white 
+
+                hover:bg-red-600
+                hover:text-white
+                hover:shadow-[0_0_30px_rgba(239,68,68,0.9)]
+                transition-all duration-200 ease-in-out
+
+                active:scale-95
+                active:bg-red-700
+              "
+            >
+              <BellOff className="w-6 h-6" />
+              STOP ALARM
+            </button>
+        </div>
         )}
       </div>
     </div>

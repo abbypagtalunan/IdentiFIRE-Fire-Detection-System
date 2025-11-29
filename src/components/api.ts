@@ -62,7 +62,6 @@ export async function detectFireInImage(
 
   return await response.json();
 }
-
 /**
  * Detect fire in a video frame
  */
@@ -107,3 +106,18 @@ export async function updateEmailConfig(config: {
 
   return await response.json();
 }
+/**
+ * Stop alarm sound
+ */
+export async function stopAlarm(): Promise<void> {
+  const response = await fetch(`${API_URL}/api/stop-alarm`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to stop alarm");
+  }
+}
+
+
+

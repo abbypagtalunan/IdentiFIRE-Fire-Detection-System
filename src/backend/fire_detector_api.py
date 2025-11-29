@@ -5,10 +5,11 @@ import numpy as np
 import base64
 import threading
 import smtplib
-# import playsound
+import pygame
 
 app = Flask(__name__)
 CORS(app, origins="http://localhost:3000")  # Allow your React frontend
+pygame.mixer.init()
 
 # ===============================
 # GLOBAL ALERT STATES
@@ -30,8 +31,16 @@ EMAIL_CONFIG = {
 # ALERT FUNCTIONS
 # ===============================
 def play_alarm_sound_function():
-    print("Alarm triggered (sound disabled)")
-    # playsound.playsound('alarm_sound.mp3')
+    global Alarm_Status
+
+    try:
+        pygame.mixer.music.load("alarm-sound.mp3")
+        pygame.mixer.music.play(-1)   # loop forever
+        print("Alarm started")
+    except Exception as e:
+        print("Alarm load error:", e)
+
+    Alarm_Status = True
 
 def send_email_alert():
     """Send email notification when fire is detected"""
@@ -212,7 +221,6 @@ def detect_fire_in_frame(frame):
     # -------------------------
     if fire_detected and not Alarm_Status:
         threading.Thread(target=play_alarm_sound_function, daemon=True).start()
-        Alarm_Status = True
 
     if fire_detected and not Email_Status:
         threading.Thread(target=send_email_alert, daemon=True).start()
@@ -253,9 +261,12 @@ def detect_image():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/detect/video-frame', methods=['POST'])
-def detect_video_frame():
-    return detect_image()
+@app.route('/api/stop-alarm', methods=['POST'])
+def stop_alarm():
+    global Alarm_Status
+    pygame.mixer.music.stop()
+    Alarm_Status = False
+    return jsonify({"success": True})
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
