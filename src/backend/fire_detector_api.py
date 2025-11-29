@@ -59,109 +59,171 @@ def encode_image_to_base64(image):
     return base64.b64encode(buffer).decode('utf-8')
 
 # ===============================
-# FIRE DETECTION LOGIC
+# IMPROVED FIRE DETECTION LOGIC
 # ===============================
+previous_mask = None
+fire_streak = 0
+
 def detect_fire_in_frame(frame):
     global Alarm_Status, Email_Status, Fire_Reported
 
-    # Resize and preprocess
+    # Resize (faster)
     frame = cv2.resize(frame, (960, 540))
-    blur = cv2.GaussianBlur(frame, (21, 21), 0)
+
+    # -------------------------
+    # 1. COLOR-BASED FIRE MASK
+    # -------------------------
+    blur = cv2.GaussianBlur(frame, (7, 7), 0)
     hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
 
-    # Fire color range
-    lower = np.array([10, 150, 150]) #Tighten the HSV range for FIRE
-    upper = np.array([35, 255, 255]) #Tighten the HSV range for FIRE
-    lower = np.array(lower, dtype="uint8")
-    upper = np.array(upper, dtype="uint8")
+    # Narrowed fire range
+    lower_fire = np.array([5, 100, 180])
+    upper_fire = np.array([30, 255, 255])
+    mask_hsv = cv2.inRange(hsv, lower_fire, upper_fire)
 
-    # Mask and segmented output
-    mask = cv2.inRange(hsv, lower, upper)
-    output = cv2.bitwise_and(frame, frame, mask=mask)
-    red_pixels = int(cv2.countNonZero(mask))
+    # -------------------------
+    # 2. HEAT SIGNATURE MASK (YCrCb)
+    # -------------------------
+    ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+    Y, Cr, Cb = cv2.split(ycrcb)
 
-    # Contour detection
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    locations = []
-    landmarks = []
+    # Cr highlights heat areas
+    _, mask_hot = cv2.threshold(Cr, 160, 255, cv2.THRESH_BINARY)
 
-    # Threshold per contour for visual fire highlighting
-    FIRE_AREA_THRESHOLD = 500  # area in pixels
-    FIRE_PIXEL_THRESHOLD = 300  # red pixels per contour
+    # -------------------------
+    # 3. BRIGHTNESS MASK (Lab)
+    # -------------------------
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    L, A, B = cv2.split(lab)
+    _, mask_bright = cv2.threshold(L, 160, 255, cv2.THRESH_BINARY)
+
+
+    # -------------------------
+    # 4. COMBINE MASKS (FIRE ENERGY MAP)
+    # -------------------------
+    fire_energy = cv2.bitwise_and(mask_hsv, mask_hot)
+    fire_energy = cv2.bitwise_and(fire_energy, mask_bright)
+
+    # Morph closing to fill gaps
+    kernel = np.ones((7, 7), np.uint8)
+    fire_energy = cv2.morphologyEx(fire_energy, cv2.MORPH_CLOSE, kernel)
+
+    red_pixels = cv2.countNonZero(fire_energy)
+
+    # -------------------------
+    # 5. FIRE DECISION
+    # -------------------------
+    # after you computed `fire_energy` and found contours:
+    contours, _ = cv2.findContours(fire_energy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    detected_areas = []
+
+    # Parameters (tweak if needed)
+    MIN_AREA = 150                  # accept small flames
+    MAX_AREA = 300000
+    MAX_SOLIDITY = 0.92             # solidity > this likely non-fire (solid puppet/building)
+    MIN_PERIM_AREA_RATIO = 0.18     # perimeter^2 / area (normalized) — fire is jaggy => higher
+    MIN_EDGE_DENSITY = 0.02         # edges / area
+    MIN_LOCAL_ENTROPY = 4.0         # local grayscale entropy
+    MIN_RED_DOMINANCE = 0.08        # (R - G) / (R + 1) should be > this for fire
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 100, 200)
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < FIRE_AREA_THRESHOLD:
+        if area < MIN_AREA or area > MAX_AREA:
             continue
 
-        # Bounding rectangle
         x, y, w, h = cv2.boundingRect(cnt)
-        locations.append({"x": x, "y": y, "width": w, "height": h})
 
-        # Count red pixels in this contour
-        contour_mask = np.zeros_like(mask)
-        cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
-        red_in_contour = cv2.countNonZero(cv2.bitwise_and(mask, mask, mask=contour_mask))
+        # Crop masks for analysis
+        cnt_mask = np.zeros(fire_energy.shape, dtype=np.uint8)
+        cv2.drawContours(cnt_mask, [cnt], -1, 255, -1)
+        roi_mask = (cnt_mask[y:y+h, x:x+w] == 255).astype(np.uint8)
 
-        # Only draw rectangles / crosses if fire intensity is high
-        if red_in_contour >= FIRE_PIXEL_THRESHOLD:
-            # Black rectangle around detected fire
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 0), 3)
+        # 1) Solidity (area / convex_hull_area)
+        hull = cv2.convexHull(cnt)
+        hull_area = cv2.contourArea(hull) if len(hull) >= 3 else 0.0001
+        solidity = float(area) / (hull_area + 1e-6)
 
-            # 1. Red dot landmark (center)
-            M = cv2.moments(cnt)
-            if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-                cv2.circle(frame, (cx, cy), 7, (0, 0, 255), -1)
-                landmarks.append({"x": cx, "y": cy, "color": "red"})
+        if solidity > MAX_SOLIDITY:
+            # Very "solid" shape -> likely puppet or object
+            continue
 
-            # 2. Mathematical landmarks → Black crosses
-            hull = cv2.convexHull(cnt)
-            for p in hull:
-                px, py = p[0]
-                cv2.drawMarker(frame, (px, py), (0, 0, 0),
-                               markerType=cv2.MARKER_CROSS,
-                               markerSize=20, thickness=2)
+        # 2) Perimeter-to-area style measure (higher => more jagged)
+        perim = cv2.arcLength(cnt, True)
+        perim_area_ratio = (perim * perim) / (area + 1e-6)
 
-            # Extreme points
-            left = tuple(cnt[cnt[:, :, 0].argmin()][0])
-            right = tuple(cnt[cnt[:, :, 0].argmax()][0])
-            top = tuple(cnt[cnt[:, :, 1].argmin()][0])
-            bottom = tuple(cnt[cnt[:, :, 1].argmax()][0])
-            for point in [left, right, top, bottom]:
-                cv2.drawMarker(frame, point, (0, 0, 0),
-                               markerType=cv2.MARKER_CROSS,
-                               markerSize=25, thickness=2)
+        if perim_area_ratio < MIN_PERIM_AREA_RATIO:
+            # Too smooth -> reject
+            continue
 
-            # 3. Pseudo-landmarks → Green dots
-            for i in range(5):
-                px = x + int(w * (i / 4))
-                py = y + int(h * (i / 4))
-                cv2.circle(frame, (px, py), 6, (0, 255, 0), -1)
+        # 3) Edge density inside contour
+        roi_edges = edges[y:y+h, x:x+w]
+        edge_count = float(np.count_nonzero(roi_edges * roi_mask))
+        edge_density = edge_count / (area + 1e-6)
+        if edge_density < MIN_EDGE_DENSITY:
+            # Too few small edges -> likely non-fire texture
+            continue
 
-    # Fire detection threshold
-    if red_pixels > 15000:
+        # 4) Local entropy (texture/noisiness)
+        roi_gray = gray[y:y+h, x:x+w]
+        # compute entropy via histogram
+        hist = cv2.calcHist([roi_gray], [0], roi_mask, [256], [0,256])
+        hist = hist.ravel()
+        prob = hist / (hist.sum() + 1e-6)
+        entropy = -np.sum([p * np.log2(p) for p in prob if p > 0]) if prob.sum() > 0 else 0.0
+        if entropy < MIN_LOCAL_ENTROPY:
+            # Too uniform -> reject
+            continue
+
+        # 5) Red dominance check (fire tends to have higher red relative to green)
+        roi = frame[y:y+h, x:x+w]
+        # compute mean color only inside mask
+        lap = cv2.Laplacian(roi_gray, cv2.CV_64F)
+        lap_var = np.var(lap[roi_mask == 1])
+
+        if lap_var < 220:      # threshold, tune if needed
+            continue
+        masked_pixels = roi[roi_mask == 1]
+        if masked_pixels.size == 0:
+            continue
+        mean_b = float(np.mean(masked_pixels[:,0]))
+        mean_g = float(np.mean(masked_pixels[:,1]))
+        mean_r = float(np.mean(masked_pixels[:,2]))
+        red_dom = (mean_r - mean_g) / (mean_r + 1e-6)
+        if red_dom < MIN_RED_DOMINANCE:
+            # R not dominant enough -> likely yellow object
+            continue
+
+        # PASSED ALL FILTERS -> accept as fire candidate
+        detected_areas.append({"x": x, "y": y, "width": w, "height": h})
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
+
+    # Final fire detection
+    fire_detected = len(detected_areas) > 0
+    confidence = min(100, (red_pixels / 8000) * 100)
+
+    if fire_detected:
         Fire_Reported += 1
 
-    if Fire_Reported >= 1:
-        if not Alarm_Status:
-            threading.Thread(target=play_alarm_sound_function, daemon=True).start()
-            Alarm_Status = True
-        if not Email_Status:
-            threading.Thread(target=send_email_alert, daemon=True).start()
-            Email_Status = True
+    # -------------------------
+    # Trigger alarm + email
+    # -------------------------
+    if fire_detected and not Alarm_Status:
+        threading.Thread(target=play_alarm_sound_function, daemon=True).start()
+        Alarm_Status = True
 
-    fire_detected = Fire_Reported >= 1
-    confidence = min(100, (red_pixels / 15000) * 100)
+    if fire_detected and not Email_Status:
+        threading.Thread(target=send_email_alert, daemon=True).start()
+        Email_Status = True
 
     return {
         "detected": fire_detected,
         "confidence": confidence,
         "red_pixel_count": red_pixels,
-        "locations": locations,
-        "landmarks": landmarks,
-        "segmented_image": encode_image_to_base64(output),
+        "locations": detected_areas,
+        "segmented_image": encode_image_to_base64(fire_energy),
         "landmark_image": encode_image_to_base64(frame),
         "timestamp": str(np.datetime64('now'))
     }
