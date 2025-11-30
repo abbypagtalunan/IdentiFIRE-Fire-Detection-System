@@ -209,6 +209,38 @@ def detect_fire_in_frame(frame):
         detected_areas.append({"x": x, "y": y, "width": w, "height": h})
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
 
+              # 1. ANATOMICAL LANDMARKS → RED DOTS
+        M = cv2.moments(cnt)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            cv2.circle(frame, (cx, cy), 7, (0, 0, 255), -1)
+
+        # 2. MATHEMATICAL LANDMARKS → BLACK CROSS
+        hull = cv2.convexHull(cnt)
+        for p in hull:
+            px, py = p[0]
+            cv2.drawMarker(frame, (px, py), (0, 0, 0),
+                            markerType=cv2.MARKER_CROSS,
+                            markerSize=20, thickness=2)
+
+        # Extreme points (mathematical)
+        left = tuple(cnt[cnt[:, :, 0].argmin()][0])
+        right = tuple(cnt[cnt[:, :, 0].argmax()][0])
+        top = tuple(cnt[cnt[:, :, 1].argmin()][0])
+        bottom = tuple(cnt[cnt[:, :, 1].argmax()][0])
+
+        for point in [left, right, top, bottom]:
+            cv2.drawMarker(frame, point, (0, 0, 0),
+                            markerType=cv2.MARKER_CROSS,
+                            markerSize=25, thickness=2)
+
+        # 3. PSEUDO-LANDMARKS → GREEN DOTS
+        for i in range(5):
+            px = x + int(w * (i / 4))
+            py = y + int(h * (i / 4))
+            cv2.circle(frame, (px, py), 6, (0, 255, 0), -1)
+
     # Final fire detection
     fire_detected = len(detected_areas) > 0
     confidence = min(100, (red_pixels / 8000) * 100)
