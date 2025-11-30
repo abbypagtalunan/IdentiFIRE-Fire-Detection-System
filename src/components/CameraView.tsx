@@ -10,6 +10,7 @@ export function CameraView() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [segmented, setSegmented] = useState<string | null>(null);
   const [landmark, setLandmark] = useState<string | null>(null);
+  const [freezeFrame, setFreezeFrame] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -45,10 +46,28 @@ export function CameraView() {
     setResult(null);
     setSegmented(null);
     setLandmark(null);
+    setFreezeFrame(null);
   };
 
-  const startAnalysis = () => setIsAnalyzing(true);
-  const stopAnalysis = () => setIsAnalyzing(false);
+  const startAnalysis = () => {
+    setFreezeFrame(null);
+    setResult(null);
+    setSegmented(null);
+    setLandmark(null);
+    setIsAnalyzing(true);
+  }; 
+
+  const stopAnalysis = async () => {
+    const frame = captureFrame();
+    if (frame) setFreezeFrame(frame);
+    setIsAnalyzing(false);
+
+    try {
+      await fetch("http://localhost:3800/api/stop-alarm", {method: "POST" });
+    } catch (err) {
+      console.error("Failed to stop alarm:", err);
+    }
+  };
 
   const captureFrame = (): string | null => {
     if (!videoRef.current) return null;
@@ -60,6 +79,13 @@ export function CameraView() {
     ctx.drawImage(videoRef.current, 0, 0);
     return canvas.toDataURL('image/jpeg', 0.85);
   };
+
+  useEffect(() => {
+    if (!freezeFrame && videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [freezeFrame, stream]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -118,6 +144,12 @@ export function CameraView() {
           </div>
         ) : (
           <>
+          {freezeFrame ? (
+            <img
+              src={freezeFrame}
+              className = "w-full h-full object-cover"
+            />
+          ) : (
             <video
               ref={videoRef}
               autoPlay
@@ -125,7 +157,7 @@ export function CameraView() {
               muted
               className="w-full h-full object-cover"
             />
-
+          )}
             {isAnalyzing && (
               <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-2 rounded-lg flex items-center gap-2 animate-pulse">
                 <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
@@ -182,7 +214,7 @@ export function CameraView() {
         </div>
       )}
 
-      {result && isAnalyzing && (
+      {result && (
         <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
           <DetectionResults result={result} showResetButton={false} />
         </div>
