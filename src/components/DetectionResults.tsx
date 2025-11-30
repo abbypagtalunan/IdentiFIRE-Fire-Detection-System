@@ -69,7 +69,7 @@ export function DetectionResults({ result, onReset, showResetButton = true }: De
         {/* confidence + areas */}
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-slate-900/50 p-4 rounded-lg">
-            <div className="text-slate-400 text-sm mb-1">Confidence Level</div>
+            <div className="text-slate-400 text-sm mb-1">Fire Detection Confidence Level</div>
             <div className="text-white">{result.confidence}%</div>
             <div className="mt-2 bg-slate-700 rounded-full h-2 overflow-hidden">
               <div
