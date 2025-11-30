@@ -129,18 +129,27 @@ export function CameraView() {
       </div>
 
       {/* CAMERA VIEW */}
-      <div className="bg-slate-900 rounded-lg overflow-hidden relative aspect-video">
+      <div className="bg-slate-900 rounded-lg overflow-hidden relative aspect-video flex items-center justify-center">
         {!isCameraActive ? (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950">
-            <CameraOff className="w-16 h-16 text-slate-600 mb-4" />
-            <p className="text-slate-400 mb-6">Camera is not active</p>
-            <button
-              onClick={startCamera}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg flex items-center gap-2"
-            >
-              <Camera className="w-5 h-5" />
-              Start Camera
-            </button>
+          <div className="max-w-xs text-center">
+            {/* Icon + label stacked */}
+            <div className="flex flex-col items-center justify-center">
+              <CameraOff className="w-16 h-16 text-slate-600 mb-2" />
+            </div>
+            <div className="text-slate-400 mb-4">
+              Camera is inactive.
+            </div>
+
+            {/* Button below with full width inside the max-w box */}
+            <div className="mt-6">
+              <button
+                onClick={startCamera}
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2"
+              >
+                <Camera className="w-5 h-5" />
+                Start Camera
+              </button>
+            </div>
           </div>
         ) : (
           <>
