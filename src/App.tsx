@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ImageUpload } from './components/ImageUpload';
-import { VideoUpload } from './components/VideoUpload';
 import { CameraView } from './components/CameraView';
 import { Flame, Image, Video, Camera } from 'lucide-react';
 
@@ -40,17 +39,6 @@ export default function App() {
             <span>Image Upload</span>
           </button>
           <button
-            onClick={() => setActiveTab('video')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
-              activeTab === 'video'
-                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <Video className="w-5 h-5" />
-            <span>Video Upload</span>
-          </button>
-          <button
             onClick={() => setActiveTab('camera')}
             className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
               activeTab === 'camera'
@@ -66,7 +54,6 @@ export default function App() {
         {/* Tab Content */}
         <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6 backdrop-blur-sm">
           {activeTab === 'image' && <ImageUpload />}
-          {activeTab === 'video' && <VideoUpload />}
           {activeTab === 'camera' && <CameraView />}
         </div>
       </main>

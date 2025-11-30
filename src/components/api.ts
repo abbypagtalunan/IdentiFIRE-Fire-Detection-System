@@ -5,7 +5,7 @@ export interface DetectionResult {
   confidence: number;
 
   // Python uses x, y, w, h 
-  locations: Array<{ x: number; y: number; w: number; h: number }>;
+  locations: Array<{ x: number; y: number; width: number; height: number }>;
 
   // Python returns mixed landmark types
   landmarks?: Array<{
@@ -62,7 +62,6 @@ export async function detectFireInImage(
 
   return await response.json();
 }
-
 /**
  * Detect fire in a video frame
  */
@@ -70,11 +69,11 @@ export async function detectFireInVideoFrame(
   frameBase64: string,
   sendAlert: boolean = false
 ): Promise<DetectionResult> {
-  const response = await fetch(`${API_URL}/api/detect/video-frame`, {
+  const response = await fetch(`${API_URL}/api/detect/image`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      frame: frameBase64,
+      image: frameBase64,
       sendAlert,
       timestamp: new Date().toISOString(),
     }),
@@ -107,3 +106,18 @@ export async function updateEmailConfig(config: {
 
   return await response.json();
 }
+/**
+ * Stop alarm sound
+ */
+export async function stopAlarm(): Promise<void> {
+  const response = await fetch(`${API_URL}/api/stop-alarm`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to stop alarm");
+  }
+}
+
+
+
