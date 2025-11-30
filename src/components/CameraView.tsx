@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Camera, CameraOff, Flame, Play, Square } from 'lucide-react';
 import { DetectionResults } from './DetectionResults';
-import { detectFireInVideoFrame, checkApiHealth, DetectionResult } from './api';
+import { detectFireInVideoFrame, checkApiHealth, DetectionResult, stopAlarm } from './api';
 
 export function CameraView() {
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -11,6 +11,8 @@ export function CameraView() {
   const [segmented, setSegmented] = useState<string | null>(null);
   const [landmark, setLandmark] = useState<string | null>(null);
   const [freezeFrame, setFreezeFrame] = useState<string | null>(null);
+  const [fireFrame, setFireFrame] = useState(0);
+  const alarmTrigger = 3;
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -103,6 +105,21 @@ export function CameraView() {
           setResult(detection);
           setSegmented(detection.segmented_image || null);
           setLandmark(detection.landmark_image || null);
+
+          if (detection.detected) {
+            setFireFrame(prev => {
+              const newFrame = prev + 1;
+              if (newFrame >= alarmTrigger) console.log("Fire confirmed");
+              return newFrame;
+            });
+          } else {
+            setFireFrame(0);
+            try {
+              await stopAlarm();
+            } catch (err) {
+              console.error("Failed to stop alarm:", err);
+            }
+          }
         } catch (err) {
           console.error('Frame processing failed:', err);
         }
