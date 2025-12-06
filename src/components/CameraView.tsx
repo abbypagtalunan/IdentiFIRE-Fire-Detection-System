@@ -16,7 +16,6 @@ export function CameraView() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Assign stream to video when it changes
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
@@ -149,7 +148,6 @@ export function CameraView() {
       <div className="bg-slate-900 rounded-lg overflow-hidden relative aspect-video flex items-center justify-center">
         {!isCameraActive ? (
           <div className="max-w-xs text-center">
-            {/* Icon + label stacked */}
             <div className="flex flex-col items-center justify-center">
               <CameraOff className="w-16 h-16 text-slate-600 mb-2" />
             </div>
@@ -157,7 +155,6 @@ export function CameraView() {
               Camera is inactive.
             </div>
 
-            {/* Button below with full width inside the max-w box */}
             <div className="mt-6">
               <button
                 onClick={startCamera}

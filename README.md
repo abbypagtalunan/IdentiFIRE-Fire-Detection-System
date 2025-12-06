@@ -1,5 +1,4 @@
 # IdentiFIRE Detection System
-
 A fire detection system with a React frontend and a Python Flask backend. This project uses computer vision libraries to detect fire from images or video streams.
 
 ---

@@ -22,7 +22,7 @@ export function ImageUpload() {
       setResult(null);
       setSegmented(null);
       setLandmark(null);
-      setShowImage('landmark'); // reset toggle
+      setShowImage('landmark');
     };
     reader.readAsDataURL(file);
   };
@@ -40,7 +40,7 @@ export function ImageUpload() {
       setResult(detectionResult);
       setSegmented(detectionResult.segmented_image || null);
       setLandmark(detectionResult.landmark_image || null);
-      setShowImage('landmark'); // default to landmark after analysis
+      setShowImage('landmark'); 
     } catch (error) {
       console.error('Detection error:', error);
       alert(
@@ -56,7 +56,7 @@ export function ImageUpload() {
     setResult(null);
     setSegmented(null);
     setLandmark(null);
-    setShowImage('landmark'); // reset toggle
+    setShowImage('landmark'); 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 

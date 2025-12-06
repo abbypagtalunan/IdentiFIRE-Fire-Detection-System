@@ -11,28 +11,18 @@ app = Flask(__name__)
 CORS(app, origins="http://localhost:3000") 
 pygame.mixer.init()
 
-# ===============================
-# GLOBAL ALERT STATES
-# ===============================
 Alarm_Status = False
 Email_Status = False
 Fire_Reported = 0
 
-# ===============================
-# EMAIL CONFIG
-# ===============================
 EMAIL_CONFIG = {
     'recipient': 'Enter_Recipient_Email',
     'sender': 'Enter_Your_Email',
     'password': 'Enter_Your_Email_Password'
 }
 
-# ===============================
-# ALERT FUNCTIONS
-# ===============================
 def play_alarm_sound_function():
     global Alarm_Status
-
     try:
         pygame.mixer.music.load("alarm-sound.mp3")
         pygame.mixer.music.play(-1)   
@@ -60,77 +50,72 @@ def send_email_alert():
     except Exception as e:
         print(f"Email error: {e}")
 
-# ===============================
 # HELPER FUNCTION TO ENCODE IMAGE
-# ===============================
 def encode_image_to_base64(image):
     _, buffer = cv2.imencode('.jpg', image)
     return base64.b64encode(buffer).decode('utf-8')
 
-# ===============================
-# IMPROVED FIRE DETECTION LOGIC
-# ===============================
+# ======================
+#  FIRE DETECTION LOGIC
+# ======================
 previous_mask = None
 fire_streak = 0
 
 def detect_fire_in_frame(frame):
     global Alarm_Status, Email_Status, Fire_Reported
-
-    # Resize (faster)
     frame = cv2.resize(frame, (960, 540))
+    blur = cv2.GaussianBlur(frame, (7, 7), 0)
 
     # -------------------------
     # 1. COLOR-BASED FIRE MASK
     # -------------------------
-    blur = cv2.GaussianBlur(frame, (7, 7), 0)
     hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-
-    # Narrowed fire range
     lower_fire = np.array([5, 100, 180])
     upper_fire = np.array([30, 255, 255])
     mask_hsv = cv2.inRange(hsv, lower_fire, upper_fire)
 
     # -------------------------
-    # 2. HEAT SIGNATURE MASK (YCrCb)
+    # 2. HEAT MASK (YCrCb)
     # -------------------------
     ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
     Y, Cr, Cb = cv2.split(ycrcb)
     _, mask_hot = cv2.threshold(Cr, 160, 255, cv2.THRESH_BINARY)
 
     # -------------------------
-    # 3. BRIGHTNESS MASK (Lab)
+    # 3. BRIGHTNESS MASK (LAB)
     # -------------------------
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     L, A, B = cv2.split(lab)
     _, mask_bright = cv2.threshold(L, 160, 255, cv2.THRESH_BINARY)
 
 
-    # -------------------------
+    # -----------------------------------
     # 4. COMBINE MASKS (FIRE ENERGY MAP)
-    # -------------------------
+    # -----------------------------------
     fire_energy = cv2.bitwise_and(mask_hsv, mask_hot)
     fire_energy = cv2.bitwise_and(fire_energy, mask_bright)
 
-    # Morph closing to fill gaps
+    # -------------------------
+    # 6. MORPHOLOGICAL CLOSING
+    # -------------------------
     kernel = np.ones((7, 7), np.uint8)
     fire_energy = cv2.morphologyEx(fire_energy, cv2.MORPH_CLOSE, kernel)
-
     red_pixels = cv2.countNonZero(fire_energy)
 
-    # -------------------------
-    # 5. FIRE DECISION
-    # -------------------------
+    # ----------------------------
+    # 7. FIRE DECISION/VALIDATION
+    # ----------------------------
     contours, _ = cv2.findContours(fire_energy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     detected_areas = []
 
     # Parameters (tweak if needed)
     MIN_AREA = 150                  # accept small flames
     MAX_AREA = 300000
-    MAX_SOLIDITY = 0.92             # solidity > this likely non-fire (solid puppet/building)
+    MAX_SOLIDITY = 0.92             # solidity > this likely non-fire
     MIN_PERIM_AREA_RATIO = 0.18     # perimeter^2 / area (normalized) — fire is jaggy => higher
     MIN_EDGE_DENSITY = 0.02         # edges / area
     MIN_LOCAL_ENTROPY = 4.0         # local grayscale entropy
-    MIN_RED_DOMINANCE = 0.08        # (R - G) / (R + 1) should be > this for fire
+    MIN_RED_DOMINANCE = 0.08        # (R - G) / (R + 1)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 100, 200)
@@ -147,30 +132,29 @@ def detect_fire_in_frame(frame):
         cv2.drawContours(cnt_mask, [cnt], -1, 255, -1)
         roi_mask = (cnt_mask[y:y+h, x:x+w] == 255).astype(np.uint8)
 
-        # 1) Solidity (area / convex_hull_area)
+        # 7.1) Solidity (area / convex_hull_area)
         hull = cv2.convexHull(cnt)
         hull_area = cv2.contourArea(hull) if len(hull) >= 3 else 0.0001
         solidity = float(area) / (hull_area + 1e-6)
 
         if solidity > MAX_SOLIDITY:
-            # Very "solid" shape -> likely puppet or object
             continue
 
-        # 2) Perimeter-to-area style measure (higher => more jagged)
+        # 7.2) Perimeter-to-area style measure (higher => more jagged)
         perim = cv2.arcLength(cnt, True)
         perim_area_ratio = (perim * perim) / (area + 1e-6)
 
         if perim_area_ratio < MIN_PERIM_AREA_RATIO:
             continue
 
-        # 3) Edge density inside contour
+        # 7.3) Edge density inside contour
         roi_edges = edges[y:y+h, x:x+w]
         edge_count = float(np.count_nonzero(roi_edges * roi_mask))
         edge_density = edge_count / (area + 1e-6)
         if edge_density < MIN_EDGE_DENSITY:
             continue
 
-        # 4) Local entropy (texture/noisiness)
+        # 7.4) Local entropy (texture/noisiness)
         roi_gray = gray[y:y+h, x:x+w]
         # compute entropy via histogram
         hist = cv2.calcHist([roi_gray], [0], roi_mask, [256], [0,256])
@@ -178,16 +162,14 @@ def detect_fire_in_frame(frame):
         prob = hist / (hist.sum() + 1e-6)
         entropy = -np.sum([p * np.log2(p) for p in prob if p > 0]) if prob.sum() > 0 else 0.0
         if entropy < MIN_LOCAL_ENTROPY:
-            # Too uniform -> reject
             continue
 
-        # 5) Red dominance check (fire tends to have higher red relative to green)
+        # 7.5) Red dominance check 
         roi = frame[y:y+h, x:x+w]
-        # compute mean color only inside mask
         lap = cv2.Laplacian(roi_gray, cv2.CV_64F)
         lap_var = np.var(lap[roi_mask == 1])
 
-        if lap_var < 220:      # threshold, tune if needed
+        if lap_var < 220:   
             continue
         masked_pixels = roi[roi_mask == 1]
         if masked_pixels.size == 0:
@@ -199,18 +181,22 @@ def detect_fire_in_frame(frame):
         if red_dom < MIN_RED_DOMINANCE:
             continue
 
-        # PASSED ALL FILTERS -> accept as fire candidate
+        # PASSED ALL FILTERS -> ACCEPTED AS FIRE
         detected_areas.append({"x": x, "y": y, "width": w, "height": h})
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
 
-              # 1. ANATOMICAL LANDMARKS → RED DOTS
+        # ----------------------------
+        # 8. LANDMARK DETECTION
+        # ----------------------------
+
+        # ANATOMICAL LANDMARKS = RED DOTS
         M = cv2.moments(cnt)
         if M["m00"] != 0:
             cx = int(M["m10"] / M["m00"])
             cy = int(M["m01"] / M["m00"])
             cv2.circle(frame, (cx, cy), 7, (0, 0, 255), -1)
 
-        # 2. MATHEMATICAL LANDMARKS → BLACK CROSS
+        # MATHEMATICAL LANDMARKS = BLACK CROSS
         hull = cv2.convexHull(cnt)
         for p in hull:
             px, py = p[0]
@@ -218,7 +204,7 @@ def detect_fire_in_frame(frame):
                             markerType=cv2.MARKER_CROSS,
                             markerSize=20, thickness=2)
 
-        # Extreme points (mathematical)
+        # Extreme points (Mathematical)
         left = tuple(cnt[cnt[:, :, 0].argmin()][0])
         right = tuple(cnt[cnt[:, :, 0].argmax()][0])
         top = tuple(cnt[cnt[:, :, 1].argmin()][0])
@@ -229,22 +215,21 @@ def detect_fire_in_frame(frame):
                             markerType=cv2.MARKER_CROSS,
                             markerSize=25, thickness=2)
 
-        # 3. PSEUDO-LANDMARKS = GREEN DOTS
+        # PSEUDO-LANDMARKS = GREEN DOTS
         for i in range(5):
             px = x + int(w * (i / 4))
             py = y + int(h * (i / 4))
             cv2.circle(frame, (px, py), 6, (0, 255, 0), -1)
 
-    # Final fire detection
+    # ------------------------------------
+    # 9. DETECTED AREAS, CONFIDENCE SCORE
+    # ------------------------------------
     fire_detected = len(detected_areas) > 0
     confidence = min(100, (red_pixels / 8000) * 100)
-
     if fire_detected:
         Fire_Reported += 1
 
-    # -------------------------
-    # Trigger alarm + email
-    # -------------------------
+    # Trigger alarm 
     if fire_detected and not Alarm_Status:
         threading.Thread(target=play_alarm_sound_function, daemon=True).start()
 
@@ -262,10 +247,9 @@ def detect_fire_in_frame(frame):
         "timestamp": str(np.datetime64('now'))
     }
 
-
-# ===============================
+# ==============
 # API ENDPOINTS
-# ===============================
+# ==============
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'ok'})
@@ -300,9 +284,6 @@ def update_config():
     EMAIL_CONFIG.update(data)
     return jsonify({"success": True})
 
-# ===============================
-# RUN SERVER
-# ===============================
 if __name__ == '__main__':
     print("Fire Detection API Running on port 3800…")
     app.run(host='0.0.0.0', port=3800, debug=True)

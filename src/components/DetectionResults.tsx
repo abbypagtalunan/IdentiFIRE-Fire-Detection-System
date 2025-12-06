@@ -12,9 +12,7 @@ export function DetectionResults({ result, onReset, showResetButton = true }: De
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return "—";
 
-    // Force UTC if timestamp lacks "Z"
     const safeTimestamp = timestamp.endsWith("Z") ? timestamp : timestamp + "Z";
-
     const date = new Date(safeTimestamp);
 
     return date.toLocaleString("en-PH", {

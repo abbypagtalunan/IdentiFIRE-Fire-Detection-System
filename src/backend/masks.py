@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 
 def detect_fire_hsv_ycrcb_lab(frame):
-    # Resize (faster)
     frame = cv2.resize(frame, (960, 540))
 
     # -------------------------
