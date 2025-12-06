@@ -72,7 +72,8 @@ pip install numpy opencv-python flask flask-cors
 4. Start the backend server:
 
 ```bash
-python fire_detector_api.py
+cd src/backend
+python3.11 fire_detector_api.py
 ```
 
 ---
