@@ -8,7 +8,7 @@ import smtplib
 import pygame
 
 app = Flask(__name__)
-CORS(app, origins="http://localhost:3000")  # Allow your React frontend
+CORS(app, origins="http://localhost:3000") 
 pygame.mixer.init()
 
 # ===============================
@@ -35,7 +35,7 @@ def play_alarm_sound_function():
 
     try:
         pygame.mixer.music.load("alarm-sound.mp3")
-        pygame.mixer.music.play(-1)   # loop forever
+        pygame.mixer.music.play(-1)   
         print("Alarm started")
     except Exception as e:
         print("Alarm load error:", e)
@@ -95,8 +95,6 @@ def detect_fire_in_frame(frame):
     # -------------------------
     ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
     Y, Cr, Cb = cv2.split(ycrcb)
-
-    # Cr highlights heat areas
     _, mask_hot = cv2.threshold(Cr, 160, 255, cv2.THRESH_BINARY)
 
     # -------------------------
@@ -122,7 +120,6 @@ def detect_fire_in_frame(frame):
     # -------------------------
     # 5. FIRE DECISION
     # -------------------------
-    # after you computed `fire_energy` and found contours:
     contours, _ = cv2.findContours(fire_energy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     detected_areas = []
 
@@ -164,7 +161,6 @@ def detect_fire_in_frame(frame):
         perim_area_ratio = (perim * perim) / (area + 1e-6)
 
         if perim_area_ratio < MIN_PERIM_AREA_RATIO:
-            # Too smooth -> reject
             continue
 
         # 3) Edge density inside contour
@@ -172,7 +168,6 @@ def detect_fire_in_frame(frame):
         edge_count = float(np.count_nonzero(roi_edges * roi_mask))
         edge_density = edge_count / (area + 1e-6)
         if edge_density < MIN_EDGE_DENSITY:
-            # Too few small edges -> likely non-fire texture
             continue
 
         # 4) Local entropy (texture/noisiness)
@@ -202,7 +197,6 @@ def detect_fire_in_frame(frame):
         mean_r = float(np.mean(masked_pixels[:,2]))
         red_dom = (mean_r - mean_g) / (mean_r + 1e-6)
         if red_dom < MIN_RED_DOMINANCE:
-            # R not dominant enough -> likely yellow object
             continue
 
         # PASSED ALL FILTERS -> accept as fire candidate
@@ -235,7 +229,7 @@ def detect_fire_in_frame(frame):
                             markerType=cv2.MARKER_CROSS,
                             markerSize=25, thickness=2)
 
-        # 3. PSEUDO-LANDMARKS → GREEN DOTS
+        # 3. PSEUDO-LANDMARKS = GREEN DOTS
         for i in range(5):
             px = x + int(w * (i / 4))
             py = y + int(h * (i / 4))
